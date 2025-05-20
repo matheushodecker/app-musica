@@ -4,9 +4,9 @@ import { useEffect, useState } from "react"
 import MusicPlayer from "@/components/music-player"
 import MusicUpload from "@/components/music-upload"
 import MusicList from "@/components/music-list"
-import type { Music } from "@/lib/types"
+import type { Music, Playlist } from "@/lib/types"
 import { loadMusics, saveMusic } from "@/lib/music-storage"
-import { WifiOff, Library, MusicIcon } from "lucide-react"
+import { WifiOff, Library, MusicIcon, ListMusic, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 
 export default function Home() {
@@ -15,17 +15,21 @@ export default function Home() {
   const [isOnline, setIsOnline] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     // Carregar músicas do armazenamento local
     const loadSavedMusics = async () => {
       setIsLoading(true)
+      setError(null)
+
       try {
         const savedMusics = await loadMusics()
         setMusics(savedMusics)
         // Não definir música atual automaticamente para evitar problemas de autoplay
       } catch (error) {
         console.error("Erro ao carregar músicas:", error)
+        setError("Ocorreu um erro ao carregar suas músicas. Verifique se seu navegador permite armazenamento local.")
       } finally {
         setTimeout(() => {
           setIsLoading(false)
@@ -51,6 +55,7 @@ export default function Home() {
     if (isUploading) return // Evitar uploads simultâneos
 
     setIsUploading(true)
+    setError(null)
 
     try {
       // Criar URL para o arquivo
@@ -74,7 +79,9 @@ export default function Home() {
       setMusics((prev) => [...prev, newMusic])
     } catch (error) {
       console.error("Erro ao carregar música:", error)
-      alert("Erro ao carregar música. Tente novamente.")
+      setError(
+        "Erro ao carregar música. Verifique se seu navegador suporta armazenamento local ou tente um arquivo menor.",
+      )
     } finally {
       setIsUploading(false)
     }
@@ -112,6 +119,11 @@ export default function Home() {
     setCurrentMusic(music)
   }
 
+  const handlePlaylistCreated = (playlist: Playlist) => {
+    // Você pode adicionar lógica aqui se precisar atualizar algo após a criação da playlist
+    console.log("Nova playlist criada:", playlist)
+  }
+
   return (
     <main className="container-fluid p-0 music-app">
       {!isOnline && (
@@ -130,6 +142,13 @@ export default function Home() {
           </header>
         </div>
       </div>
+
+      {error && (
+        <div className="alert alert-danger mx-4">
+          <AlertTriangle size={18} className="me-2" />
+          {error}
+        </div>
+      )}
 
       <div className="row g-0">
         <div className="col-12">
@@ -152,7 +171,7 @@ export default function Home() {
       {currentMusic && (
         <div className="row g-0">
           <div className="col-12">
-            <MusicPlayer music={currentMusic} />
+            <MusicPlayer music={currentMusic} musics={musics} onChangeMusic={handleSelectMusic} />
           </div>
         </div>
       )}
@@ -165,6 +184,10 @@ export default function Home() {
         <Link href="/library" className="nav-item">
           <Library size={20} />
           <span>Biblioteca</span>
+        </Link>
+        <Link href="/playlists" className="nav-item">
+          <ListMusic size={20} />
+          <span>Playlists</span>
         </Link>
       </nav>
     </main>

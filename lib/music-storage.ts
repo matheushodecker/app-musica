@@ -3,27 +3,74 @@ import type { Music, StoredMusic, StoredMusicFile } from "./types"
 // Chave para armazenar músicas no IndexedDB
 const MUSIC_STORE_NAME = "musics"
 const DB_NAME = "music-app-db"
-const DB_VERSION = 1
+const DB_VERSION = 1 // Mantemos a versão 1 como base
 
 // Função para abrir o banco de dados
 const openDatabase = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-
-    request.onerror = (event) => {
-      console.error("Erro ao abrir o banco de dados:", event)
-      reject(new Error("Erro ao abrir o banco de dados"))
+    if (!window.indexedDB) {
+      reject(new Error("Seu navegador não suporta IndexedDB"))
+      return
     }
 
-    request.onsuccess = () => {
-      resolve(request.result)
-    }
+    // Primeiro, verificamos a versão atual do banco
+    const checkRequest = indexedDB.open(DB_NAME)
 
-    request.onupgradeneeded = (event) => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(MUSIC_STORE_NAME)) {
-        db.createObjectStore(MUSIC_STORE_NAME, { keyPath: "id" })
+    checkRequest.onsuccess = () => {
+      const db = checkRequest.result
+      const currentVersion = db.version
+      db.close()
+
+      // Agora abrimos com a versão correta
+      const request = indexedDB.open(DB_NAME, currentVersion)
+
+      request.onerror = (event) => {
+        console.error("Erro ao abrir o banco de dados:", event)
+        reject(new Error("Erro ao abrir o banco de dados"))
       }
+
+      request.onsuccess = () => {
+        const db = request.result
+
+        // Verificamos se o store de músicas existe
+        if (!db.objectStoreNames.contains(MUSIC_STORE_NAME)) {
+          db.close()
+          // Se não existe, incrementamos a versão e reabrimos
+          const upgradeRequest = indexedDB.open(DB_NAME, currentVersion + 1)
+
+          upgradeRequest.onupgradeneeded = (event) => {
+            const db = upgradeRequest.result
+            if (!db.objectStoreNames.contains(MUSIC_STORE_NAME)) {
+              db.createObjectStore(MUSIC_STORE_NAME, { keyPath: "id" })
+              console.log("Store de músicas criado com sucesso")
+            }
+          }
+
+          upgradeRequest.onsuccess = () => {
+            resolve(upgradeRequest.result)
+          }
+
+          upgradeRequest.onerror = (event) => {
+            console.error("Erro ao atualizar o banco de dados:", event)
+            reject(new Error("Erro ao atualizar o banco de dados"))
+          }
+        } else {
+          resolve(db)
+        }
+      }
+
+      request.onupgradeneeded = (event) => {
+        const db = request.result
+        if (!db.objectStoreNames.contains(MUSIC_STORE_NAME)) {
+          db.createObjectStore(MUSIC_STORE_NAME, { keyPath: "id" })
+          console.log("Store de músicas criado durante upgrade")
+        }
+      }
+    }
+
+    checkRequest.onerror = (event) => {
+      console.error("Erro ao verificar versão do banco de dados:", event)
+      reject(new Error("Erro ao verificar versão do banco de dados"))
     }
   })
 }
@@ -55,24 +102,27 @@ export const saveMusic = async (music: Music): Promise<void> => {
     const db = await openDatabase()
 
     return new Promise((resolve, reject) => {
-      // Criar uma nova transação para cada operação
-      const transaction = db.transaction([MUSIC_STORE_NAME], "readwrite")
-      const store = transaction.objectStore(MUSIC_STORE_NAME)
-
-      transaction.onerror = (event) => {
-        console.error("Erro na transação:", event)
-        reject(new Error("Erro na transação do banco de dados"))
-      }
-
-      transaction.oncomplete = () => {
-        resolve()
-      }
-
-      // Executar a operação de salvamento
       try {
+        // Criar uma nova transação para cada operação
+        const transaction = db.transaction([MUSIC_STORE_NAME], "readwrite")
+        const store = transaction.objectStore(MUSIC_STORE_NAME)
+
+        transaction.onerror = (event) => {
+          console.error("Erro na transação:", event)
+          db.close()
+          reject(new Error("Erro na transação do banco de dados"))
+        }
+
+        transaction.oncomplete = () => {
+          db.close()
+          resolve()
+        }
+
+        // Executar a operação de salvamento
         store.put(musicToStore)
       } catch (error) {
-        console.error("Erro ao executar put:", error)
+        console.error("Erro ao executar transação:", error)
+        db.close()
         reject(error)
       }
     })
@@ -88,56 +138,67 @@ export const loadMusics = async (): Promise<Music[]> => {
     const db = await openDatabase()
 
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([MUSIC_STORE_NAME], "readonly")
-      const store = transaction.objectStore(MUSIC_STORE_NAME)
+      try {
+        const transaction = db.transaction([MUSIC_STORE_NAME], "readonly")
+        const store = transaction.objectStore(MUSIC_STORE_NAME)
 
-      transaction.onerror = (event) => {
-        console.error("Erro na transação de leitura:", event)
-        reject(new Error("Erro na transação de leitura"))
-      }
+        transaction.onerror = (event) => {
+          console.error("Erro na transação de leitura:", event)
+          db.close()
+          reject(new Error("Erro na transação de leitura"))
+        }
 
-      const request = store.getAll()
+        const request = store.getAll()
 
-      request.onerror = (event) => {
-        console.error("Erro ao ler músicas:", event)
-        reject(new Error("Erro ao ler músicas"))
-      }
+        request.onerror = (event) => {
+          console.error("Erro ao ler músicas:", event)
+          db.close()
+          reject(new Error("Erro ao ler músicas"))
+        }
 
-      request.onsuccess = () => {
-        try {
-          // Converter os dados armazenados de volta para o formato Music
-          const musics: Music[] = request.result.map((storedMusic: StoredMusic) => {
-            const fileData = storedMusic.file
+        request.onsuccess = () => {
+          try {
+            // Converter os dados armazenados de volta para o formato Music
+            const musics: Music[] = (request.result || []).map((storedMusic: StoredMusic) => {
+              const fileData = storedMusic.file
 
-            // Criar um novo File a partir do ArrayBuffer
-            const file = new File([fileData.data], fileData.name, {
-              type: fileData.type,
-              lastModified: fileData.lastModified,
+              // Criar um novo File a partir do ArrayBuffer
+              const file = new File([fileData.data], fileData.name, {
+                type: fileData.type,
+                lastModified: fileData.lastModified,
+              })
+
+              // Criar uma URL para o arquivo
+              const url = URL.createObjectURL(file)
+
+              return {
+                id: storedMusic.id,
+                name: storedMusic.name,
+                artist: storedMusic.artist,
+                duration: storedMusic.duration,
+                file,
+                url,
+              }
             })
 
-            // Criar uma URL para o arquivo
-            const url = URL.createObjectURL(file)
-
-            return {
-              id: storedMusic.id,
-              name: storedMusic.name,
-              artist: storedMusic.artist,
-              duration: storedMusic.duration,
-              file,
-              url,
-            }
-          })
-
-          resolve(musics)
-        } catch (error) {
-          console.error("Erro ao processar músicas:", error)
-          reject(new Error("Erro ao processar músicas"))
+            db.close()
+            resolve(musics)
+          } catch (error) {
+            console.error("Erro ao processar músicas:", error)
+            db.close()
+            reject(new Error("Erro ao processar músicas"))
+          }
         }
+      } catch (error) {
+        console.error("Erro ao executar transação de leitura:", error)
+        db.close()
+        reject(error)
       }
     })
   } catch (error) {
     console.error("Erro ao carregar músicas:", error)
-    throw error
+    // Retornar array vazio em caso de erro para evitar quebrar a aplicação
+    return []
   }
 }
 
@@ -147,22 +208,25 @@ export const removeMusic = async (id: string): Promise<void> => {
     const db = await openDatabase()
 
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([MUSIC_STORE_NAME], "readwrite")
-      const store = transaction.objectStore(MUSIC_STORE_NAME)
-
-      transaction.onerror = (event) => {
-        console.error("Erro na transação de remoção:", event)
-        reject(new Error("Erro na transação de remoção"))
-      }
-
-      transaction.oncomplete = () => {
-        resolve()
-      }
-
       try {
+        const transaction = db.transaction([MUSIC_STORE_NAME], "readwrite")
+        const store = transaction.objectStore(MUSIC_STORE_NAME)
+
+        transaction.onerror = (event) => {
+          console.error("Erro na transação de remoção:", event)
+          db.close()
+          reject(new Error("Erro na transação de remoção"))
+        }
+
+        transaction.oncomplete = () => {
+          db.close()
+          resolve()
+        }
+
         store.delete(id)
       } catch (error) {
         console.error("Erro ao executar delete:", error)
+        db.close()
         reject(error)
       }
     })

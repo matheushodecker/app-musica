@@ -2,10 +2,25 @@
 
 import { useEffect, useState } from "react"
 import { loadMusics, removeMusic } from "@/lib/music-storage"
-import type { Music } from "@/lib/types"
-import { Library, Grid, List, MusicIcon, Trash2, Play, Pause, SortAsc, SortDesc, Search } from "lucide-react"
+import type { Music, Playlist } from "@/lib/types"
+import {
+  Library,
+  Grid,
+  List,
+  MusicIcon,
+  Trash2,
+  Play,
+  Pause,
+  SortAsc,
+  SortDesc,
+  Search,
+  ListMusic,
+  MoreVertical,
+  PlusCircle,
+} from "lucide-react"
 import Link from "next/link"
 import MusicPlayer from "@/components/music-player"
+import AddToPlaylistModal from "@/components/add-to-playlist-modal"
 
 export default function LibraryPage() {
   const [musics, setMusics] = useState<Music[]>([])
@@ -17,6 +32,9 @@ export default function LibraryPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
   const [selectedMusics, setSelectedMusics] = useState<string[]>([])
+  const [showAddToPlaylistModal, setShowAddToPlaylistModal] = useState(false)
+  const [selectedMusicForPlaylist, setSelectedMusicForPlaylist] = useState<string | null>(null)
+  const [musicMenuOpen, setMusicMenuOpen] = useState<string | null>(null)
 
   useEffect(() => {
     const loadUserMusics = async () => {
@@ -100,6 +118,17 @@ export default function LibraryPage() {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = Math.floor(seconds % 60)
     return `${minutes}:${remainingSeconds < 10 ? "0" : ""}${remainingSeconds}`
+  }
+
+  const handleAddToPlaylist = (musicId: string) => {
+    setSelectedMusicForPlaylist(musicId)
+    setShowAddToPlaylistModal(true)
+    setMusicMenuOpen(null)
+  }
+
+  const handlePlaylistCreated = (playlist: Playlist) => {
+    // Você pode adicionar lógica aqui se precisar atualizar algo após a criação da playlist
+    console.log("Nova playlist criada:", playlist)
   }
 
   // Filtrar e ordenar músicas
@@ -244,9 +273,35 @@ export default function LibraryPage() {
                           />
                         </div>
                       ) : (
-                        <button className="play-button">
-                          {currentMusic?.id === music.id ? <Pause size={24} /> : <Play size={24} />}
-                        </button>
+                        <>
+                          <button className="play-button">
+                            {currentMusic?.id === music.id ? <Pause size={24} /> : <Play size={24} />}
+                          </button>
+                          <button
+                            className="music-menu-button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMusicMenuOpen(musicMenuOpen === music.id ? null : music.id)
+                            }}
+                          >
+                            <MoreVertical size={20} />
+                          </button>
+
+                          {musicMenuOpen === music.id && (
+                            <div className="music-menu">
+                              <button
+                                className="music-menu-item"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleAddToPlaylist(music.id)
+                                }}
+                              >
+                                <PlusCircle size={16} className="me-2" />
+                                Adicionar à playlist
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -264,6 +319,7 @@ export default function LibraryPage() {
                 <div className="list-cell cell-title">Título</div>
                 <div className="list-cell cell-artist">Artista</div>
                 <div className="list-cell cell-duration">Duração</div>
+                <div className="list-cell cell-actions"></div>
               </div>
               {filteredAndSortedMusics.map((music) => (
                 <div
@@ -292,6 +348,36 @@ export default function LibraryPage() {
                   <div className="list-cell cell-title">{music.name}</div>
                   <div className="list-cell cell-artist">{music.artist || "Arquivo local"}</div>
                   <div className="list-cell cell-duration">{formatDuration(music.duration)}</div>
+                  <div className="list-cell cell-actions">
+                    {!isDeleting && (
+                      <div className="music-menu-container">
+                        <button
+                          className="btn-icon btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setMusicMenuOpen(musicMenuOpen === music.id ? null : music.id)
+                          }}
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+
+                        {musicMenuOpen === music.id && (
+                          <div className="music-menu">
+                            <button
+                              className="music-menu-item"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleAddToPlaylist(music.id)
+                              }}
+                            >
+                              <PlusCircle size={16} className="me-2" />
+                              Adicionar à playlist
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -308,7 +394,9 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {currentMusic && <MusicPlayer music={currentMusic} />}
+      {currentMusic && (
+        <MusicPlayer music={currentMusic} musics={filteredAndSortedMusics} onChangeMusic={handleSelectMusic} />
+      )}
 
       <nav className="bottom-nav">
         <Link href="/" className="nav-item">
@@ -319,7 +407,19 @@ export default function LibraryPage() {
           <Library size={20} />
           <span>Biblioteca</span>
         </Link>
+        <Link href="/playlists" className="nav-item">
+          <ListMusic size={20} />
+          <span>Playlists</span>
+        </Link>
       </nav>
+
+      {showAddToPlaylistModal && selectedMusicForPlaylist && (
+        <AddToPlaylistModal
+          musicId={selectedMusicForPlaylist}
+          onClose={() => setShowAddToPlaylistModal(false)}
+          onPlaylistCreated={handlePlaylistCreated}
+        />
+      )}
     </main>
   )
 }

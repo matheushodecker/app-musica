@@ -18,3 +18,13 @@ export interface StoredMusicFile {
 export interface StoredMusic extends Omit<Music, "file"> {
   file: StoredMusicFile
 }
+
+export interface Playlist {
+  id: string
+  name: string
+  description?: string
+  coverColor?: string
+  createdAt: number
+  updatedAt: number
+  musicIds: string[]
+}

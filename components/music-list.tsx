@@ -1,7 +1,9 @@
 "use client"
 
-import { MusicIcon, Play, Pause } from "lucide-react"
+import { useState } from "react"
+import { MusicIcon, Play, Pause, MoreVertical, PlusCircle } from "lucide-react"
 import type { Music } from "@/lib/types"
+import AddToPlaylistModal from "@/components/add-to-playlist-modal"
 
 interface MusicListProps {
   musics: Music[]
@@ -10,6 +12,16 @@ interface MusicListProps {
 }
 
 export default function MusicList({ musics, currentMusic, onSelectMusic }: MusicListProps) {
+  const [musicMenuOpen, setMusicMenuOpen] = useState<string | null>(null)
+  const [selectedMusicForPlaylist, setSelectedMusicForPlaylist] = useState<string | null>(null)
+  const [showAddToPlaylistModal, setShowAddToPlaylistModal] = useState(false)
+
+  const handleAddToPlaylist = (musicId: string) => {
+    setSelectedMusicForPlaylist(musicId)
+    setShowAddToPlaylistModal(true)
+    setMusicMenuOpen(null)
+  }
+
   if (musics.length === 0) {
     return (
       <div className="empty-list">
@@ -53,13 +65,52 @@ export default function MusicList({ musics, currentMusic, onSelectMusic }: Music
                 <h3 className="music-title mb-1">{music.name}</h3>
                 <p className="music-artist mb-0">{music.artist || "Arquivo local"}</p>
               </div>
-              <button className="play-button btn-icon">
-                {currentMusic?.id === music.id ? <Pause size={20} /> : <Play size={20} />}
-              </button>
+              <div className="d-flex align-items-center">
+                <button className="play-button btn-icon me-2">
+                  {currentMusic?.id === music.id ? <Pause size={20} /> : <Play size={20} />}
+                </button>
+                <div className="music-menu-container">
+                  <button
+                    className="btn-icon"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMusicMenuOpen(musicMenuOpen === music.id ? null : music.id)
+                    }}
+                  >
+                    <MoreVertical size={20} />
+                  </button>
+
+                  {musicMenuOpen === music.id && (
+                    <div className="music-menu">
+                      <button
+                        className="music-menu-item"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAddToPlaylist(music.id)
+                        }}
+                      >
+                        <PlusCircle size={16} className="me-2" />
+                        Adicionar à playlist
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         ))}
       </div>
+
+      {showAddToPlaylistModal && selectedMusicForPlaylist && (
+        <AddToPlaylistModal
+          musicId={selectedMusicForPlaylist}
+          onClose={() => setShowAddToPlaylistModal(false)}
+          onPlaylistCreated={(playlist) => {
+            console.log("Nova playlist criada:", playlist)
+            setShowAddToPlaylistModal(false)
+          }}
+        />
+      )}
     </div>
   )
 }
